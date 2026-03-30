@@ -873,13 +873,26 @@ func uniqueAuthFileNames(names []string) []string {
 
 func (h *Handler) deleteAuthFileByName(ctx context.Context, name string) (string, int, error) {
 	name = strings.TrimSpace(name)
-	if isUnsafeAuthFileName(name) {
+
+	// If the name contains path separators (e.g. ".cli-proxy-api/user@mail.json"),
+	// try to resolve via auth manager first, then fall back to the base name.
+	baseName := name
+	if strings.ContainsAny(name, "/\\") {
+		baseName = filepath.Base(name)
+	}
+	if isUnsafeAuthFileName(baseName) {
 		return "", http.StatusBadRequest, fmt.Errorf("invalid name")
 	}
 
-	targetPath := filepath.Join(h.cfg.AuthDir, filepath.Base(name))
+	targetPath := filepath.Join(h.cfg.AuthDir, baseName)
 	targetID := ""
-	if targetAuth := h.findAuthForDelete(name); targetAuth != nil {
+	// Try matching with the original name first (may contain path prefix used as ID),
+	// then fall back to the base name.
+	targetAuth := h.findAuthForDelete(name)
+	if targetAuth == nil && baseName != name {
+		targetAuth = h.findAuthForDelete(baseName)
+	}
+	if targetAuth != nil {
 		targetID = strings.TrimSpace(targetAuth.ID)
 		if path := strings.TrimSpace(authAttribute(targetAuth, "path")); path != "" {
 			targetPath = path
@@ -892,19 +905,19 @@ func (h *Handler) deleteAuthFileByName(ctx context.Context, name string) (string
 	}
 	if errRemove := os.Remove(targetPath); errRemove != nil {
 		if os.IsNotExist(errRemove) {
-			return filepath.Base(name), http.StatusNotFound, errAuthFileNotFound
+			return baseName, http.StatusNotFound, errAuthFileNotFound
 		}
-		return filepath.Base(name), http.StatusInternalServerError, fmt.Errorf("failed to remove file: %w", errRemove)
+		return baseName, http.StatusInternalServerError, fmt.Errorf("failed to remove file: %w", errRemove)
 	}
 	if errDeleteRecord := h.deleteTokenRecord(ctx, targetPath); errDeleteRecord != nil {
-		return filepath.Base(name), http.StatusInternalServerError, errDeleteRecord
+		return baseName, http.StatusInternalServerError, errDeleteRecord
 	}
 	if targetID != "" {
 		h.disableAuth(ctx, targetID)
 	} else {
 		h.disableAuth(ctx, targetPath)
 	}
-	return filepath.Base(name), http.StatusOK, nil
+	return baseName, http.StatusOK, nil
 }
 
 func (h *Handler) findAuthForDelete(name string) *coreauth.Auth {
