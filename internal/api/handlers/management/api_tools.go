@@ -107,10 +107,13 @@ type apiCallResponse struct {
 //	  -d '{"auth_index":"<AUTH_INDEX>","method":"POST","url":"https://api.example.com/v1/fetchAvailableModels","header":{"Authorization":"Bearer $TOKEN$","Content-Type":"application/json","User-Agent":"cliproxyapi"},"data":"{}"}'
 func (h *Handler) APICall(c *gin.Context) {
 	var body apiCallRequest
-	if errBindJSON := c.ShouldBindJSON(&body); errBindJSON != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	bodyJSON, _ := json.Marshal(body)
+	log.Infof("[Management Test] 收到请求 Body: %s", string(bodyJSON))
 
 	method := strings.ToUpper(strings.TrimSpace(body.Method))
 	if method == "" {
@@ -119,6 +122,13 @@ func (h *Handler) APICall(c *gin.Context) {
 	}
 
 	urlStr := strings.TrimSpace(body.URL)
+	// 补丁：修复管理后台前端 Bug。前端在点击测试按钮时会丢失 Base URL 中的路径。
+	// 已知 NVIDIA 必须包含 /v1 路径
+	if strings.Contains(urlStr, "integrate.api.nvidia.com") && !strings.Contains(urlStr, "/v1/") {
+		urlStr = strings.Replace(urlStr, "integrate.api.nvidia.com/", "integrate.api.nvidia.com/v1/", 1)
+		log.Infof("[Management Test] 自动修正 URL (补齐路径): %s", urlStr)
+	}
+
 	if urlStr == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "missing url"})
 		return
@@ -190,6 +200,7 @@ func (h *Handler) APICall(c *gin.Context) {
 	}
 	httpClient.Transport = h.apiCallTransport(auth)
 
+	log.Infof("[Management Test] 发送请求: %s %s", method, urlStr)
 	resp, errDo := httpClient.Do(req)
 	if errDo != nil {
 		log.WithError(errDo).Debug("management APICall request failed")
