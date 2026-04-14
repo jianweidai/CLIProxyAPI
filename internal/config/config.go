@@ -64,6 +64,14 @@ type Config struct {
 
 	// UsageStatisticsEnabled toggles in-memory usage aggregation; when false, usage data is discarded.
 	UsageStatisticsEnabled bool `yaml:"usage-statistics-enabled" json:"usage-statistics-enabled"`
+	// UsageStatisticsFile stores usage statistics snapshots on disk when configured.
+	UsageStatisticsFile string `yaml:"usage-statistics-file,omitempty" json:"usage-statistics-file,omitempty"`
+	// UsageStatisticsFlushIntervalSeconds controls how often usage stats are flushed to disk.
+	// When <= 0, a sensible default is applied by the usage persistence layer.
+	UsageStatisticsFlushIntervalSeconds int `yaml:"usage-statistics-flush-interval-seconds,omitempty" json:"usage-statistics-flush-interval-seconds,omitempty"`
+	// UsageStatisticsRetentionDays controls how many days of usage details to keep.
+	// When <= 0, no retention pruning is applied.
+	UsageStatisticsRetentionDays int `yaml:"usage-statistics-retention-days,omitempty" json:"usage-statistics-retention-days,omitempty"`
 
 	// DisableCooling disables quota cooldown scheduling when true.
 	DisableCooling bool `yaml:"disable-cooling" json:"disable-cooling"`
@@ -587,6 +595,9 @@ func LoadConfigOptional(configFile string, optional bool) (*Config, error) {
 	cfg.LogsMaxTotalSizeMB = 0
 	cfg.ErrorLogsMaxFiles = 10
 	cfg.UsageStatisticsEnabled = false
+	cfg.UsageStatisticsFile = ""
+	cfg.UsageStatisticsFlushIntervalSeconds = 0
+	cfg.UsageStatisticsRetentionDays = 0
 	cfg.DisableCooling = false
 	cfg.Pprof.Enable = false
 	cfg.Pprof.Addr = DefaultPprofAddr

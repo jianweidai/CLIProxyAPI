@@ -66,6 +66,16 @@ error-logs-max-files: 10
 # When false, disable in-memory usage statistics aggregation
 usage-statistics-enabled: false
 
+# Persist usage statistics snapshots to disk (set a path or leave empty to disable persistence).
+# Relative paths are resolved relative to the config.yaml directory.
+usage-statistics-file: ""
+
+# How often to flush usage statistics to disk (seconds). Set to 0 to use default.
+usage-statistics-flush-interval-seconds: 60
+
+# How many days of usage details to keep. Set to 0 to keep all.
+usage-statistics-retention-days: 0
+
 # Proxy URL. Supports socks5/http/https protocols. Example: socks5://user:pass@192.168.1.1:1080/
 # Per-entry proxy-url also supports "direct" or "none" to bypass both the global proxy-url and environment proxies explicitly.
 proxy-url: ""

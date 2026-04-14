@@ -380,6 +380,100 @@ func (s *RequestStatistics) recordImported(apiName, modelName string, stats *api
 	s.tokensByHour[hourKey] += totalTokens
 }
 
+// PruneOlderThan removes request details older than the cutoff and recomputes aggregates.
+// It keeps only details with timestamp >= cutoff.
+func (s *RequestStatistics) PruneOlderThan(cutoff time.Time) {
+	if s == nil {
+		return
+	}
+	if cutoff.IsZero() {
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	newAPIs := make(map[string]*apiStats)
+	newRequestsByDay := make(map[string]int64)
+	newRequestsByHour := make(map[int]int64)
+	newTokensByDay := make(map[string]int64)
+	newTokensByHour := make(map[int]int64)
+
+	var totalRequests int64
+	var successCount int64
+	var failureCount int64
+	var totalTokens int64
+
+	for apiName, stats := range s.apis {
+		if stats == nil {
+			continue
+		}
+		newStats := &apiStats{Models: make(map[string]*modelStats)}
+		for modelName, modelStatsValue := range stats.Models {
+			if modelStatsValue == nil {
+				continue
+			}
+			var kept []RequestDetail
+			for _, detail := range modelStatsValue.Details {
+				ts := detail.Timestamp
+				if ts.IsZero() {
+					ts = time.Now()
+					detail.Timestamp = ts
+				}
+				if ts.Before(cutoff) {
+					continue
+				}
+				detail.Tokens = normaliseTokenStats(detail.Tokens)
+				if detail.LatencyMs < 0 {
+					detail.LatencyMs = 0
+				}
+				kept = append(kept, detail)
+
+				totalRequests++
+				if detail.Failed {
+					failureCount++
+				} else {
+					successCount++
+				}
+				totalTokens += detail.Tokens.TotalTokens
+
+				dayKey := ts.Format("2006-01-02")
+				hourKey := ts.Hour()
+				newRequestsByDay[dayKey]++
+				newRequestsByHour[hourKey]++
+				newTokensByDay[dayKey] += detail.Tokens.TotalTokens
+				newTokensByHour[hourKey] += detail.Tokens.TotalTokens
+			}
+			if len(kept) == 0 {
+				continue
+			}
+			ms := &modelStats{}
+			for _, detail := range kept {
+				ms.TotalRequests++
+				ms.TotalTokens += detail.Tokens.TotalTokens
+			}
+			ms.Details = kept
+			newStats.Models[modelName] = ms
+			newStats.TotalRequests += ms.TotalRequests
+			newStats.TotalTokens += ms.TotalTokens
+		}
+		if len(newStats.Models) == 0 {
+			continue
+		}
+		newAPIs[apiName] = newStats
+	}
+
+	s.apis = newAPIs
+	s.requestsByDay = newRequestsByDay
+	s.requestsByHour = newRequestsByHour
+	s.tokensByDay = newTokensByDay
+	s.tokensByHour = newTokensByHour
+	s.totalRequests = totalRequests
+	s.successCount = successCount
+	s.failureCount = failureCount
+	s.totalTokens = totalTokens
+}
+
 func dedupKey(apiName, modelName string, detail RequestDetail) string {
 	timestamp := detail.Timestamp.UTC().Format(time.RFC3339Nano)
 	tokens := normaliseTokenStats(detail.Tokens)
