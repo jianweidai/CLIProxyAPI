@@ -72,6 +72,9 @@ type Config struct {
 	// UsageStatisticsRetentionDays controls how many days of usage details to keep.
 	// When <= 0, no retention pruning is applied.
 	UsageStatisticsRetentionDays int `yaml:"usage-statistics-retention-days,omitempty" json:"usage-statistics-retention-days,omitempty"`
+	// ModelPricesFile stores model price settings for the management UI on disk.
+	// Relative paths are resolved relative to the config.yaml directory.
+	ModelPricesFile string `yaml:"model-prices-file,omitempty" json:"model-prices-file,omitempty"`
 
 	// DisableCooling disables quota cooldown scheduling when true.
 	DisableCooling bool `yaml:"disable-cooling" json:"disable-cooling"`
@@ -598,6 +601,7 @@ func LoadConfigOptional(configFile string, optional bool) (*Config, error) {
 	cfg.UsageStatisticsFile = ""
 	cfg.UsageStatisticsFlushIntervalSeconds = 0
 	cfg.UsageStatisticsRetentionDays = 0
+	cfg.ModelPricesFile = ""
 	cfg.DisableCooling = false
 	cfg.Pprof.Enable = false
 	cfg.Pprof.Addr = DefaultPprofAddr
