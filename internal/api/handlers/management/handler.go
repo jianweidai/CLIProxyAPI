@@ -41,7 +41,6 @@ type Handler struct {
 	attemptsMu          sync.Mutex
 	failedAttempts      map[string]*attemptInfo // keyed by client IP
 	authManager         *coreauth.Manager
-	usageStats          *usage.RequestStatistics
 	tokenStore          coreauth.Store
 	localPassword       string
 	allowRemoteOverride bool
@@ -49,6 +48,7 @@ type Handler struct {
 	logDir              string
 	postAuthHook        coreauth.PostAuthHook
 	modelPricesMu       sync.Mutex
+	usageStats          *usage.RequestStatistics
 }
 
 // NewHandler creates a new management handler instance.
@@ -61,10 +61,10 @@ func NewHandler(cfg *config.Config, configFilePath string, manager *coreauth.Man
 		configFilePath:      configFilePath,
 		failedAttempts:      make(map[string]*attemptInfo),
 		authManager:         manager,
-		usageStats:          usage.GetRequestStatistics(),
 		tokenStore:          sdkAuth.GetTokenStore(),
 		allowRemoteOverride: envSecret != "",
 		envSecret:           envSecret,
+		usageStats:          usage.GetRequestStatistics(),
 	}
 	h.startAttemptCleanup()
 	return h
@@ -125,9 +125,6 @@ func (h *Handler) SetAuthManager(manager *coreauth.Manager) {
 	h.mu.Unlock()
 }
 
-// SetUsageStatistics allows replacing the usage statistics reference.
-func (h *Handler) SetUsageStatistics(stats *usage.RequestStatistics) { h.usageStats = stats }
-
 // SetLocalPassword configures the runtime-local password accepted for localhost requests.
 func (h *Handler) SetLocalPassword(password string) { h.localPassword = password }
 
@@ -148,6 +145,9 @@ func (h *Handler) SetLogDirectory(dir string) {
 func (h *Handler) SetPostAuthHook(hook coreauth.PostAuthHook) {
 	h.postAuthHook = hook
 }
+
+// SetUsageStatistics overrides the usage statistics store used by management endpoints.
+func (h *Handler) SetUsageStatistics(stats *usage.RequestStatistics) { h.usageStats = stats }
 
 // Middleware enforces access control for management endpoints.
 // All requests (local and remote) require a valid management key.
