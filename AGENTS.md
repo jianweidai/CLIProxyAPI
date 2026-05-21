@@ -40,6 +40,19 @@ go build -o test-output ./cmd/server && rm test-output # Verify compile (REQUIRE
 - `sdk/cliproxy/` — Embeddable SDK entry (service/builder/watchers/pipeline)
 - `test/` — Cross-module integration tests
 
+## Release Branch: Extra Features vs. main
+
+The `release` branch intentionally carries features not present in `main`. When merging `main` into `release` and a conflict arises, **always prefer the `release` side** for the following areas — do not ask for confirmation:
+
+| Area | Config keys / paths | Notes |
+|---|---|---|
+| Usage statistics persistence | `usage-statistics-file`, `usage-statistics-flush-interval-seconds`, `usage-statistics-retention-days` | Disk-persist usage stats snapshots |
+| Model price persistence | `model-prices-file` | Disk-persist management UI model prices |
+| Redis RESP usage queue comment | comment above `redis-usage-queue-retention-seconds` in `config.example.yaml` | Keep the more detailed release-branch wording |
+| Management UI usage pages | `internal/usage/`, any UI components/routes for usage statistics | These pages are intentionally retained in release |
+
+If the conflict is outside these areas and the intent is ambiguous, ask before resolving.
+
 ## Code Conventions
 - Keep changes small and simple (KISS)
 - Comments in English only
