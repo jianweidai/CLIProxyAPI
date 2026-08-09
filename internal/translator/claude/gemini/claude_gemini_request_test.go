@@ -62,6 +62,64 @@ func TestConvertGeminiRequestToClaude_PreservesCustomToolIDs(t *testing.T) {
 	}
 }
 
+func TestConvertGeminiRequestToClaude_GroupsConsecutiveRoleTurns(t *testing.T) {
+	raw := []byte(`{
+		"contents":[
+			{"role":"model","parts":[{"text":"answer"}]},
+			{"role":"model","parts":[{"functionCall":{"name":"first","id":"call_1","args":{}}}]},
+			{"role":"model","parts":[{"functionCall":{"name":"second","id":"call_2","args":{}}}]},
+			{"role":"user","parts":[{"functionResponse":{"name":"first","id":"call_1","response":{"result":"one"}}}]},
+			{"role":"user","parts":[{"functionResponse":{"name":"second","id":"call_2","response":{"result":"two"}}}]}
+		]
+	}`)
+
+	out := ConvertGeminiRequestToClaude("claude-test", raw, false)
+	messages := gjson.GetBytes(out, "messages").Array()
+	if len(messages) != 2 {
+		t.Fatalf("message count = %d, want 2. Output: %s", len(messages), string(out))
+	}
+	assistantContent := messages[0].Get("content").Array()
+	wantAssistantTypes := []string{"text", "tool_use", "tool_use"}
+	if len(assistantContent) != len(wantAssistantTypes) {
+		t.Fatalf("assistant content count = %d, want %d. Output: %s", len(assistantContent), len(wantAssistantTypes), string(out))
+	}
+	for i, wantType := range wantAssistantTypes {
+		if got := assistantContent[i].Get("type").String(); got != wantType {
+			t.Fatalf("assistant content[%d].type = %q, want %q", i, got, wantType)
+		}
+	}
+	userContent := messages[1].Get("content").Array()
+	if len(userContent) != 2 {
+		t.Fatalf("user content count = %d, want 2. Output: %s", len(userContent), string(out))
+	}
+	for i, wantID := range []string{"call_1", "call_2"} {
+		if got := userContent[i].Get("type").String(); got != "tool_result" {
+			t.Fatalf("user content[%d].type = %q, want tool_result", i, got)
+		}
+		if got := userContent[i].Get("tool_use_id").String(); got != wantID {
+			t.Fatalf("user content[%d].tool_use_id = %q, want %q", i, got, wantID)
+		}
+	}
+}
+
+func TestConvertGeminiRequestToClaude_KeepsSystemInstructionUserSeparate(t *testing.T) {
+	raw := []byte(`{
+		"system_instruction":{"parts":[{"text":"system rule"}]},
+		"contents":[{"role":"user","parts":[{"text":"question"}]}]
+	}`)
+	out := ConvertGeminiRequestToClaude("claude-test", raw, false)
+	messages := gjson.GetBytes(out, "messages").Array()
+	if len(messages) != 2 {
+		t.Fatalf("message count = %d, want 2. Output: %s", len(messages), string(out))
+	}
+	if got := messages[0].Get("content.0.text").String(); got != "system rule" {
+		t.Fatalf("system user text = %q, want system rule", got)
+	}
+	if got := messages[1].Get("content.0.text").String(); got != "question" {
+		t.Fatalf("ordinary user text = %q, want question", got)
+	}
+}
+
 func TestConvertGeminiRequestToClaude_DropsTemperature(t *testing.T) {
 	raw := []byte(`{
 		"generationConfig": {
@@ -83,5 +141,32 @@ func TestConvertGeminiRequestToClaude_DropsTemperature(t *testing.T) {
 	}
 	if got := gjson.GetBytes(out, "top_p").Float(); got != 0.8 {
 		t.Fatalf("top_p = %v, want 0.8", got)
+	}
+}
+
+func TestConvertGeminiRequestToClaude_AcceptsCamelInlineData(t *testing.T) {
+	out := ConvertGeminiRequestToClaude("claude-sonnet-4", []byte(`{"contents":[{"role":"user","parts":[{"inlineData":{"mimeType":"image/png","data":"aGVsbG8="}}]}]}`), false)
+	if got := gjson.GetBytes(out, "messages.0.content.0.type").String(); got != "image" {
+		t.Fatalf("content type = %q, want image. Output: %s", got, string(out))
+	}
+	if got := gjson.GetBytes(out, "messages.0.content.0.source.media_type").String(); got != "image/png" {
+		t.Fatalf("media_type = %q, want image/png. Output: %s", got, string(out))
+	}
+}
+
+func TestConvertGeminiRequestToClaude_SplitsNonImageInlineDataByMIME(t *testing.T) {
+	out := ConvertGeminiRequestToClaude("claude-sonnet-4", []byte(`{"contents":[{"role":"user","parts":[{"inlineData":{"mimeType":"audio/wav","data":"UklGRg=="}},{"inlineData":{"mimeType":"video/mp4","data":"AAAAIGZ0eXA="}},{"inlineData":{"mimeType":"application/pdf","data":"JVBERi0="}}]}]}`), false)
+
+	if got := gjson.GetBytes(out, "messages.0.content.0.type").String(); got != "text" {
+		t.Fatalf("audio fallback type = %q, want text. Output: %s", got, string(out))
+	}
+	if got := gjson.GetBytes(out, "messages.0.content.1.type").String(); got != "text" {
+		t.Fatalf("video fallback type = %q, want text. Output: %s", got, string(out))
+	}
+	if got := gjson.GetBytes(out, "messages.0.content.2.type").String(); got != "document" {
+		t.Fatalf("document content type = %q, want document. Output: %s", got, string(out))
+	}
+	if gjson.GetBytes(out, "messages.0.content.#(type==\"image\")").Exists() {
+		t.Fatalf("non-image inlineData must not be converted to image. Output: %s", string(out))
 	}
 }
